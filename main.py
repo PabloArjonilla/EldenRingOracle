@@ -1,77 +1,127 @@
-
-# A very simple Flask Hello World app for you to get started with...
-
 from flask import Flask
-
-app = Flask(__name__)
-@app.get("/message/{locale}")
-@app.route("/message/")
-def message(locale: str = "en"):
-    return {"message": getRandomMessage(locale)}
-
-
 import random
 import logging
 import os
 
+app = Flask(__name__)
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger()
-
 
 # Get the directory where this script is located
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
-
 # Loading all messages
 logger.info("Loading messages from all available languages...")
-
 supported_languages = []
 supported_languages_hashtags = []
-
 messages_by_language = {}
-messages_word_categories = open(os.path.join(BASE_DIR, "Messages/Categories", 'r')).read().splitlines()
 
-for language in open(os.path.join(BASE_DIR, "Messages/Locales", 'r')).read().splitlines():
+# FIXED: Proper file path construction and error handling
+try:
+    categories_file = os.path.join(BASE_DIR, "Messages", "Categories")  # Fixed the path
+    with open(categories_file, 'r') as f:
+        messages_word_categories = f.read().splitlines()
+    logger.info(f"Loaded {len(messages_word_categories)} categories")
+except FileNotFoundError:
+    logger.error(f"Categories file not found at {categories_file}")
+    messages_word_categories = []
+
+try:
+    locales_file = os.path.join(BASE_DIR, "Messages", "Locales")  # Fixed the path
+    with open(locales_file, 'r') as f:
+        locales_content = f.read().splitlines()
+    logger.info(f"Loaded {len(locales_content)} locales")
+except FileNotFoundError:
+    logger.error(f"Locales file not found at {locales_file}")
+    locales_content = ['en']  # Default to English
+
+for language in locales_content:
     supported_languages.append(language)
-    supported_languages_hashtags.append(f"{language}")
-
+    supported_languages_hashtags.append(f"#{language}")
     try:
         language_messages = {}
-        language_conjunctions = open(os.path.join(BASE_DIR, "Messages/{language}/Conjunctions", 'r')).read().splitlines()
-        language_templates = open(os.path.join(BASE_DIR, "Messages/{language}/Templates", 'r')).read().splitlines()
-        language_words_by_category = {}
 
+        # FIXED: Proper file paths
+        conjunctions_file = os.path.join(BASE_DIR, "Messages", language, "Conjunctions")
+        templates_file = os.path.join(BASE_DIR, "Messages", language, "Templates")
+
+        with open(conjunctions_file, 'r') as f:
+            language_conjunctions = f.read().splitlines()
+
+        with open(templates_file, 'r') as f:
+            language_templates = f.read().splitlines()
+
+        language_words_by_category = {}
         for category in messages_word_categories:
-            language_words_by_category[category] = open(os.path.join(BASE_DIR, "Messages/{language}/Words/{category}", 'r')).read().splitlines()
+            word_file = os.path.join(BASE_DIR, "Messages", language, "Words", category)
+            try:
+                with open(word_file, 'r') as f:
+                    language_words_by_category[category] = f.read().splitlines()
+            except FileNotFoundError:
+                logger.warning(f"Word file not found: {word_file}")
+                language_words_by_category[category] = []
 
         language_messages["conjunctions"] = language_conjunctions
         language_messages["templates"] = language_templates
         language_messages["words_by_category"] = language_words_by_category
-
         messages_by_language[language] = language_messages
 
+        logger.info(f"Loaded language: {language}")
+
     except FileNotFoundError as e:
-        logger.error(f"Locale {language} not found.")
+        logger.error(f"Locale {language} not found: {e}")
 
 # Message functions
 def getRandomPhrase(locale):
+    if locale not in messages_by_language:
+        locale = "en"  # Fallback to English
+
+    if not messages_by_language[locale]["templates"]:
+        return "No templates available"
+
     random_template = random.choice(messages_by_language[locale]["templates"])
-    random_word = random.choice(messages_by_language[locale]["words_by_category"][random.choice(messages_word_categories)])
+
+    # Better category selection with fallback
+    available_categories = [cat for cat in messages_word_categories
+                            if cat in messages_by_language[locale]["words_by_category"]
+                            and messages_by_language[locale]["words_by_category"][cat]]
+
+    if not available_categories:
+        return random_template.replace("*", "word")
+
+    random_category = random.choice(available_categories)
+    random_word = random.choice(messages_by_language[locale]["words_by_category"][random_category])
+
     return random_template.replace("*", random_word)
 
-
 def getRandomConjunction(locale):
-    random_conjunction = random.choice(messages_by_language[locale]["conjunctions"])
-    return getRandomPhrase(locale) + random_conjunction + getRandomPhrase(locale)
+    if locale not in messages_by_language or not messages_by_language[locale]["conjunctions"]:
+        return getRandomPhrase(locale)  # Fallback if no conjunctions
 
+    random_conjunction = random.choice(messages_by_language[locale]["conjunctions"])
+    return getRandomPhrase(locale) + " " + random_conjunction + " " + getRandomPhrase(locale)
 
 def getRandomMessage(locale):
-    if locale == None:
+    if locale is None or locale not in messages_by_language:
         locale = "en"
+
     if bool(random.getrandbits(1)):
         return getRandomPhrase(locale)
     else:
         return getRandomConjunction(locale)
 
+@app.route("/message/<locale>")
+@app.route("/message/")
+def message(locale="en"):
+    try:
+        return {"message": getRandomMessage(locale)}
+    except Exception as e:
+        logger.error(f"Error generating message: {e}")
+        return {"error": "Failed to generate message"}, 500
 
+@app.route("/")
+def index():
+    return {"status": "EldenRingOracle API is running", "endpoint": "/message/<locale>"}
 
+if __name__ == "__main__":
+    app.run(debug=True)
