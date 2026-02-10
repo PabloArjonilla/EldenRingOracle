@@ -82,9 +82,7 @@ def getRandomPhrase(locale):
     random_template = random.choice(messages_by_language[locale]["templates"])
 
     # Better category selection with fallback
-    available_categories = [cat for cat in messages_word_categories
-                            if cat in messages_by_language[locale]["words_by_category"]
-                            and messages_by_language[locale]["words_by_category"][cat]]
+    available_categories = [cat for cat in messages_word_categories if cat in messages_by_language[locale]["words_by_category"] and messages_by_language[locale]["words_by_category"][cat]]
 
     if not available_categories:
         return random_template.replace("*", "word")
