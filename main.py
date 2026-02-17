@@ -1,4 +1,4 @@
-from flask import Flask
+from flask import Flask, request
 import random
 import logging
 import os
@@ -107,6 +107,37 @@ def getRandomMessage(locale):
         return getRandomPhrase(locale)
     else:
         return getRandomConjunction(locale)
+
+
+@app.route("/scramble", methods=["POST"])
+def scramble():
+    data = request.get_json()
+    if not data or "message" not in data:
+        return {"error": "JSON body with 'message' field is required"}, 400
+
+    message = data["message"]
+    words = message.split()
+    punctuation = {}
+    stripped_words = []
+    for i, word in enumerate(words):
+        trailing = ""
+        while word and not word[-1].isalnum():
+            trailing = word[-1] + trailing
+            word = word[:-1]
+        if trailing:
+            punctuation[i] = trailing
+        stripped_words.append(word)
+
+    random.shuffle(stripped_words)
+
+    result = []
+    for i, word in enumerate(stripped_words):
+        if i in punctuation:
+            word += punctuation[i]
+        result.append(word)
+
+    return {"message": " ".join(result)}
+
 
 @app.route("/message/<locale>")
 @app.route("/message/")
