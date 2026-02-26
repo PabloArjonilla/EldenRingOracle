@@ -5,6 +5,10 @@ import os
 import hmac
 import hashlib
 import subprocess
+import zipfile
+import io
+import shutil
+import requests
 
 WEBHOOK_SECRET = os.environ.get("WEBHOOK_SECRET")
 PYTHONANYWHERE_USER = os.environ.get("USER")
@@ -132,13 +136,31 @@ def git_update():
     if not hmac.compare_digest(signature, expected):
         return {"error": "Invalid signature"}, 403
 
-    # Pull latest changes
-    subprocess.run(
-        ["git", "pull", "origin", "main"],
-        cwd=BASE_DIR
-    )
+    # Download and extract latest code from GitHub
+    zip_url = "https://github.com/PabloArjonilla/EldenRingOracle/archive/refs/heads/main.zip"
+    response = requests.get(zip_url)
 
-    # Reload PythonAnywhere web app by touching the WSGI file
+    z = zipfile.ZipFile(io.BytesIO(response.content))
+    tmp_dir = "/tmp/repo-update"
+    if os.path.exists(tmp_dir):
+        shutil.rmtree(tmp_dir)
+    z.extractall(tmp_dir)
+
+    # The zip extracts to YOURREPO-main/, copy contents over
+    extracted = os.path.join(tmp_dir, os.listdir(tmp_dir)[0])
+    for item in os.listdir(extracted):
+        src = os.path.join(extracted, item)
+        dst = os.path.join(BASE_DIR, item)
+        if os.path.isdir(src):
+            if os.path.exists(dst):
+                shutil.rmtree(dst)
+            shutil.copytree(src, dst)
+        else:
+            shutil.copy2(src, dst)
+
+    shutil.rmtree(tmp_dir)
+
+    # Reload PythonAnywhere web app
     wsgi_file = f"/var/www/{PYTHONANYWHERE_USER}_pythonanywhere_com_wsgi.py"
     subprocess.run(["touch", wsgi_file])
 
@@ -189,5 +211,12 @@ def message(locale="en"):
 def index():
     return {"status": "EldenRingOracle API is running", "endpoint": "/message/<locale>"}
 
+
+@app.route("/version")
+def version():
+    return {"version": "2.0"}, 400
+
+
 if __name__ == "__main__":
     app.run(debug=True)
+
