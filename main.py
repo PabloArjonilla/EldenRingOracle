@@ -122,20 +122,6 @@ def getRandomMessage(locale):
 
 @app.route("/git-update", methods=["POST"])
 def git_update():
-    # Verify GitHub signature
-    signature = request.headers.get("X-Hub-Signature-256")
-    if not signature:
-        return {"error": "Missing signature"}, 403
-
-    expected = "sha256=" + hmac.new(
-        WEBHOOK_SECRET.encode(),
-        request.data,
-        hashlib.sha256
-    ).hexdigest()
-
-    if not hmac.compare_digest(signature, expected):
-        return {"error": "Invalid signature"}, 403
-
     # Download and extract latest code from GitHub
     zip_url = "https://github.com/PabloArjonilla/EldenRingOracle/archive/refs/heads/main.zip"
     response = requests.get(zip_url)
@@ -214,7 +200,7 @@ def index():
 
 @app.route("/version")
 def version():
-    return {"version": "2.0"}, 400
+    return {"version": "2.1"}, 400
 
 
 if __name__ == "__main__":
