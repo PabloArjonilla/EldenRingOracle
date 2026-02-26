@@ -2,6 +2,13 @@ from flask import Flask, request
 import random
 import logging
 import os
+import hmac
+import hashlib
+import subprocess
+
+WEBHOOK_SECRET = os.environ.get("WEBHOOK_SECRET")
+PYTHONANYWHERE_USER = os.environ.get("USER")
+
 
 app = Flask(__name__)
 logging.basicConfig(level=logging.INFO)
@@ -107,6 +114,36 @@ def getRandomMessage(locale):
         return getRandomPhrase(locale)
     else:
         return getRandomConjunction(locale)
+
+
+@app.route("/git-update", methods=["POST"])
+def git_update():
+    # Verify GitHub signature
+    signature = request.headers.get("X-Hub-Signature-256")
+    if not signature:
+        return {"error": "Missing signature"}, 403
+
+    expected = "sha256=" + hmac.new(
+        WEBHOOK_SECRET.encode(),
+        request.data,
+        hashlib.sha256
+    ).hexdigest()
+
+    if not hmac.compare_digest(signature, expected):
+        return {"error": "Invalid signature"}, 403
+
+    # Pull latest changes
+    subprocess.run(
+        ["git", "pull", "origin", "main"],
+        cwd=BASE_DIR
+    )
+
+    # Reload PythonAnywhere web app by touching the WSGI file
+    wsgi_file = f"/var/www/{PYTHONANYWHERE_USER}_pythonanywhere_com_wsgi.py"
+    subprocess.run(["touch", wsgi_file])
+
+    return {"status": "updated"}, 200
+
 
 
 @app.route("/scramble", methods=["POST"])
