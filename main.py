@@ -200,7 +200,7 @@ def index():
 
 @app.route("/version")
 def version():
-    return {"version": "2.4.1"}, 200
+    return {"version": "2.4.2"}, 200
 
 
 if __name__ == "__main__":
