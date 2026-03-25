@@ -153,8 +153,7 @@ def git_update():
     return {"status": "updated"}, 200
 
 
-
-@app.route("/scramble", methods=["POST"])
+@app.route("/redacted", methods=["POST"])
 def scramble():
     data = request.get_json()
     if not data or "message" not in data:
@@ -162,24 +161,31 @@ def scramble():
 
     message = data["message"]
     words = message.split()
-    punctuation = {}
-    stripped_words = []
-    for i, word in enumerate(words):
-        trailing = ""
-        while word and not word[-1].isalnum():
-            trailing = word[-1] + trailing
-            word = word[:-1]
-        if trailing:
-            punctuation[i] = trailing
-        stripped_words.append(word)
 
-    random.shuffle(stripped_words)
+    if len(words) <= 5:
+        return {"message": message}
+
+    candidates = []
+    for i, word in enumerate(words):
+        stripped = word
+        while stripped and not stripped[-1].isalnum():
+            stripped = stripped[:-1]
+        if len(stripped) > 4:
+            candidates.append(i)
+
+    guaranteed = random.choice(candidates) if candidates else None
 
     result = []
-    for i, word in enumerate(stripped_words):
-        if i in punctuation:
-            word += punctuation[i]
-        result.append(word)
+    for i, word in enumerate(words):
+        trailing = ""
+        stripped = word
+        while stripped and not stripped[-1].isalnum():
+            trailing = stripped[-1] + trailing
+            stripped = stripped[:-1]
+        if i in candidates and (i == guaranteed or random.random() < 0.6):
+            result.append("<redacted>" + trailing)
+        else:
+            result.append(word)
 
     return {"message": " ".join(result)}
 
@@ -200,7 +206,7 @@ def index():
 
 @app.route("/version")
 def version():
-    return {"version": "2.4.3"}, 200
+    return {"version": "3.0.0"}, 200
 
 
 if __name__ == "__main__":
