@@ -183,7 +183,7 @@ def scramble():
             trailing = stripped[-1] + trailing
             stripped = stripped[:-1]
         if i in candidates and (i == guaranteed or random.random() < 0.6):
-            result.append("<redacted>" + trailing)
+            result.append("[redacted]" + trailing)
         else:
             result.append(word)
 
@@ -206,7 +206,7 @@ def index():
 
 @app.route("/version")
 def version():
-    return {"version": "3.0.0"}, 200
+    return {"version": "3.0.1"}, 200
 
 
 if __name__ == "__main__":
