@@ -9,6 +9,7 @@ import zipfile
 import io
 import shutil
 import requests
+import re
 
 WEBHOOK_SECRET = os.environ.get("WEBHOOK_SECRET")
 PYTHONANYWHERE_USER = os.environ.get("USER")
@@ -82,8 +83,13 @@ for language in locales_content:
     except FileNotFoundError as e:
         logger.error(f"Locale {language} not found: {e}")
 
+def clean_whitespace(text):
+    text = re.sub(r'\s+', ' ', text)
+    text = re.sub(r'\s+([,\.!?:;])', r'\1', text)
+    return text.strip()
+
 # Message functions
-def getRandomPhrase(locale):
+def getRandomPhrase(locale, used_words=None):
     if locale not in messages_by_language:
         locale = "en"  # Fallback to English
 
@@ -98,26 +104,68 @@ def getRandomPhrase(locale):
     if not available_categories:
         return random_template.replace("*", "word")
 
-    random_category = random.choice(available_categories)
-    random_word = random.choice(messages_by_language[locale]["words_by_category"][random_category])
+    if used_words is None:
+        used_words = set()
 
-    return random_template.replace("*", random_word)
+    result = random_template
+    while "*" in result:
+        random_category = random.choice(available_categories)
+        words = messages_by_language[locale]["words_by_category"][random_category]
+        unused = [w for w in words if w not in used_words]
+        chosen_word = random.choice(unused) if unused else random.choice(words)
+        used_words.add(chosen_word)
+        result = result.replace("*", chosen_word, 1)
 
-def getRandomConjunction(locale):
+    return result
+
+def getRandomConjunction(locale, used_words=None):
     if locale not in messages_by_language or not messages_by_language[locale]["conjunctions"]:
-        return getRandomPhrase(locale)  # Fallback if no conjunctions
+        return getRandomPhrase(locale, used_words)
 
-    random_conjunction = random.choice(messages_by_language[locale]["conjunctions"])
-    return getRandomPhrase(locale) + " " + random_conjunction + " " + getRandomPhrase(locale)
+    if used_words is None:
+        used_words = set()
 
-def getRandomMessage(locale):
+    phrase1 = getRandomPhrase(locale, used_words)
+    phrase2 = getRandomPhrase(locale, used_words)
+    random_conjunction = random.choice(messages_by_language[locale]["conjunctions"]).strip()
+
+    if phrase1.strip().endswith("..."):
+        combined = f"{phrase1} {phrase2}"
+    elif random_conjunction == ",":
+        combined = f"{phrase1.rstrip()},{phrase2}"
+    else:
+        combined = f"{phrase1} {random_conjunction} {phrase2}"
+
+    return clean_whitespace(combined)
+
+def getRandomMessage(locale=None):
     if locale is None or locale not in messages_by_language:
         locale = "en"
 
-    if bool(random.getrandbits(1)):
-        return getRandomPhrase(locale)
-    else:
-        return getRandomConjunction(locale)
+    used_words = set()
+
+    num_phrases = random.choices([1, 2, 3], weights=[85, 12, 3])[0]
+
+    if num_phrases == 1:
+        return clean_whitespace(getRandomPhrase(locale, used_words))
+
+    phrases = [getRandomPhrase(locale, used_words) for _ in range(num_phrases)]
+    conjunctions = messages_by_language[locale].get("conjunctions", [])
+
+    message = phrases[0]
+    for i in range(1, len(phrases)):
+        next_phrase = phrases[i]
+
+        if message.strip().endswith("..."):
+            message += f" {next_phrase}"
+        else:
+            conj = random.choice(conjunctions).strip() if conjunctions else ","
+            if conj == ",":
+                message += f", {next_phrase}"
+            else:
+                message += f" {conj} {next_phrase}"
+
+    return clean_whitespace(message)
 
 
 @app.route("/git-update", methods=["POST"])
@@ -206,7 +254,7 @@ def index():
 
 @app.route("/version")
 def version():
-    return {"version": "3.0.4"}, 200
+    return {"version": "4.0.0"}, 200
 
 
 if __name__ == "__main__":
